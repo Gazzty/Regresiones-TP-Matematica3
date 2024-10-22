@@ -6,62 +6,82 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
+from sklearn.impute import SimpleImputer
 
-# Cargar los datos
-yen_rate_df = pd.read_csv('data/yen-rate.csv')
-tourism_df = pd.read_csv('data/tourism-data.csv')
+# Cargar los datasets
+tourism_data = pd.read_csv('data/tourism-data.csv')
+yen_data = pd.read_csv('data/yen-rate.csv')
 
-# Limpiar y preparar los datos
-tourism_df['Year'] = tourism_df['Year'].astype(int)  # Asegurarse que el año es int
-tourism_df['Grand Total'] = tourism_df['Grand Total'].str.replace('.', '').str.replace(',', '.').astype(float)  # Convertir a float
+# Preprocesamiento de datos
+tourism_data['Year'] = tourism_data['Year'].astype(int)
+yen_data['Record Date'] = pd.to_datetime(yen_data['Record Date'])
+yen_data['Year'] = yen_data['Record Date'].dt.year
 
-# Filtrar datos para el gráfico
-yen_rate_df['Record Date'] = pd.to_datetime(yen_rate_df['Record Date'])
-yen_rate_df['Year'] = yen_rate_df['Record Date'].dt.year
+# Verificar años únicos en cada dataset
+print("Años únicos en turismo:", tourism_data['Year'].unique())
+print("Años únicos en yen:", yen_data['Year'].unique())
 
-# Agrupar la tasa de cambio por año
-yen_rate_yearly = yen_rate_df.groupby('Year')['Exchange Rate'].mean().reset_index()
+# Filtrar los años comunes
+common_years = set(tourism_data['Year']).intersection(set(yen_data['Year']))
+print("Años comunes:", common_years)  # Años comunes
 
-# Combinar los DataFrames
-combined_df = pd.merge(tourism_df, yen_rate_yearly, on='Year', how='outer')
+# Filtrar datos según los años comunes
+tourism_filtered = tourism_data[tourism_data['Year'].isin(common_years)]
+yen_grouped = yen_data.groupby('Year')['Exchange Rate'].mean().reset_index()
+yen_filtered = yen_grouped[yen_grouped['Year'].isin(common_years)]
 
-# Visualizar los datos
+# Imprimir los datasets filtrados
+print("Datos de turismo filtrados:\n", tourism_filtered)
+print("Datos de yen filtrados:\n", yen_filtered)
+
+# Asegurarse de que los datos filtrados tengan las mismas longitudes
+if len(tourism_filtered) != len(yen_filtered):
+    raise ValueError("Las longitudes de los datos filtrados no coinciden")
+
+# Imputar valores faltantes en los datos de turismo
+imputer = SimpleImputer(strategy='mean')
+y_tourism = tourism_filtered['Grand Total'].str.replace('.', '').str.replace(',', '').astype(float).to_numpy()
+y_tourism_imputed = imputer.fit_transform(y_tourism.reshape(-1, 1)).ravel()
+
+# Imputar valores faltantes en el valor del yen
+y_yen = yen_filtered['Exchange Rate'].astype(float).to_numpy()
+y_yen_imputed = imputer.fit_transform(y_yen.reshape(-1, 1)).ravel()
+
+# Preparar datos para regresión lineal simple y múltiple
+X = yen_filtered['Year'].values.reshape(-1, 1)  # Para la regresión simple
+X_multi = np.column_stack((yen_filtered['Year'].values, y_yen_imputed))  # Para la regresión múltiple
+
+# Regresión lineal simple para el yen
+model_yen_simple = LinearRegression()
+model_yen_simple.fit(X, y_yen_imputed)
+yen_pred_simple = model_yen_simple.predict(X)
+
+# Regresión lineal múltiple para el turismo
+model_tourism_multi = LinearRegression()
+model_tourism_multi.fit(X_multi, y_tourism_imputed)
+tourism_pred_multi = model_tourism_multi.predict(X_multi)
+
+# Graficar los resultados
 plt.figure(figsize=(12, 6))
-plt.plot(combined_df['Year'], combined_df['Grand Total'], marker='o', label='Turistas (Grand Total)')
-plt.plot(combined_df['Year'], combined_df['Exchange Rate'], marker='x', label='Tasa de Cambio (Yen)')
-plt.xlabel('Año')
-plt.ylabel('Cantidad / Tasa de Cambio')
-plt.title('Comparación entre la cantidad de turistas y la tasa de cambio del Yen')
-plt.legend()
-plt.grid()
 
-# Mejorar la legibilidad de los años
-plt.xticks(combined_df['Year'], rotation=45, ha='right', fontsize=10)
+# Gráfico de turismo
+plt.subplot(1, 2, 1)
+plt.plot(tourism_filtered['Year'], y_tourism_imputed, label='Turistas (imputados)', marker='o')
+plt.plot(tourism_filtered['Year'], tourism_pred_multi, label='Regresión Lineal Múltiple', linestyle='--', color='blue')
+plt.title('Turismo en Japón')
+plt.xlabel('Año')
+plt.ylabel('Número de Turistas')
+plt.legend()
+
+# Gráfico del yen
+plt.subplot(1, 2, 2)
+plt.plot(yen_filtered['Year'], y_yen_imputed, label='Valor del Yen (imputado)', marker='o', color='orange')
+plt.plot(yen_filtered['Year'], yen_pred_simple, label='Regresión Lineal Simple', linestyle='--', color='red')
+plt.title('Valor del Yen Japonés')
+plt.xlabel('Año')
+plt.ylabel('Tipo de Cambio (Yen/USD)')
+plt.legend()
 
 plt.tight_layout()
 plt.show()
-
-# Predecir valores faltantes usando regresión lineal
-# Solo para el "Grand Total"
-train_df = combined_df[combined_df['Grand Total'].notna()]
-X = train_df[['Year', 'Exchange Rate']]
-y = train_df['Grand Total']
-
-# Dividir en conjunto de entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Ajustar el modelo
-model = LinearRegression()
-model.fit(X_train, y_train)
-
-# Predecir sobre los datos faltantes
-missing_data = combined_df[combined_df['Grand Total'].isna()]
-if not missing_data.empty:
-    X_missing = missing_data[['Year', 'Exchange Rate']]
-    predictions = model.predict(X_missing)
-    combined_df.loc[combined_df['Grand Total'].isna(), 'Grand Total'] = predictions
-
-# Mostrar el DataFrame actualizado con las predicciones
-print(combined_df)
