@@ -3,6 +3,7 @@
 # Se van a ver incoherencias (datos que se oponen a lo que quiero demostrar) en 2020 hasta 2022, ya que en esa epoca estaba la pandemia
 # NOTA: En los csv encontrados faltan datos entre 2014 y 2019, por lo cual se usaron predicciones para llenar esos datos
 
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -71,7 +72,7 @@ plt.plot(tourism_filtered['Year'], y_tourism_imputed, label='Turistas (imputados
 plt.plot(tourism_filtered['Year'], tourism_pred_multi, label='Regresión Lineal Múltiple', linestyle='--', color='blue')
 plt.title('Turismo en Japón')
 plt.xlabel('Año')
-plt.ylabel('Número de Turistas')
+plt.ylabel('Número de Turistas (Millones)')
 plt.legend()
 
 # Gráfico del yen
